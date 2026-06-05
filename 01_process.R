@@ -10,7 +10,7 @@ library(dplyr)
 # -------------------------------------------------------------------
 
 OLLAMA_URL      <- "http://localhost:11434/api/generate"
-OLLAMA_MODEL    <- "llama3.2"
+OLLAMA_MODEL    <- "mistral"
 N_WORKERS       <- 4      # match OLLAMA_NUM_PARALLEL
 CHECKPOINT_FILE <- "scoring_checkpoint.rds"
 CHECKPOINT_EVERY <- 50    # save to disk every N texts
@@ -35,6 +35,7 @@ score_text <- function(text, attributes) {
        \"attribute1\": {{\"relevance\": 0.8, \"valence\": -3}},
        \"attribute2\": {{\"relevance\": 0.0, \"valence\": null}}
      }}
+     Important: valence must be a plain integer with no + sign (e.g. 5 not +5).
      No explanation, no markdown, just the JSON.
 
      Attributes:
@@ -48,9 +49,10 @@ score_text <- function(text, attributes) {
 
     raw <- request(OLLAMA_URL) |>
       req_body_json(list(
-        model  = OLLAMA_MODEL,
-        prompt = prompt,
-        stream = FALSE
+        model   = OLLAMA_MODEL,
+        prompt  = prompt,
+        stream  = FALSE,
+        options = list(num_predict = 2000)  # enough for any reasonable attribute list
       )) |>
       req_timeout(120) |>
       req_retry(max_tries = 3,
@@ -58,7 +60,10 @@ score_text <- function(text, attributes) {
       req_perform() |>
       resp_body_json()
 
-    fromJSON(raw$response)
+    # Strip any leading + before parsing
+    cleaned <- gsub("+", "", raw$response, fixed = TRUE)
+
+    fromJSON(cleaned)
 
   }, error = function(e) {
     warning(glue("Failed for text: {substr(text, 1, 50)}...\nError: {e$message}"))
